@@ -269,7 +269,7 @@
 	controllers.hint = function (form) {
         // Check the current user
         var user = rootRef.getAuth();
-        var userRef;
+        var hintRef, userUsedHintRef;
 
         // If no current user send to register page
         if (!user) {
@@ -284,23 +284,31 @@
             e.preventDefault();
 
 
-			form.find('#ddlHint').val(user.site);
-			hintRef = rootRef.child('hints').child(user.uid);
+			var site = form.find('#ddlHint').val();
 			
-			userRef.once('value', function (snap) {
-				var hint = snap.val();
-				if (!hint) {
-					return;
-				}
+			
+			hintRef = rootRef.child('hints').child(site);
+			
+			userUsedHintRef = rootRef.child('usersUsedHint').child(site).child(user.uid);
+			
+			userUsedHintRef.set({date: new Date() + '', email: user.password.email}, function onComplete() {
+						
+				hintRef.once('value', function (snap) {
+					var hint = snap.val();
+					if (!hint) {
+						return;
+					}
 
-				// set the fields
-	//            form.find('#txtName').val(user.site);
-			 //   form.find('#ddlDino').val(user.favoriteDinosaur);
-				showAlert({
-					title: hint.title,
-					detail: hint.detail,
-					className: 'alert-success'
-				});				
+					// set the fields
+					form.find('#txtSiteLetter').val(hint.SiteLetter);
+					form.find('#txtAnswer').val(hint.Answer);
+					form.find('#txtDescription').val(hint.Description);
+					showAlert({
+						title: hint.title,
+						detail: hint.detail,
+						className: 'alert-success'
+					});				
+				});
 			});
         });
     };
@@ -511,26 +519,38 @@ form {
 
         <br />
         <div class="form-group">
-            <label for="txtName">Site letter where you are stuck</label>
+            <label for="ddlHint">Site letter (Letter on the white stake of the site where you are stuck</label>
             <select id="ddlHint" name="hint" class="form-control">
                 <option>None</option>
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-                <option>4</option>
-                <option>5</option>
-                <option>6</option>
-                <option>7</option>
-                <option>8</option>
-                <option>9</option>
-                <option>10</option>
-                <option>11</option>
-                <option>12</option>
-                <option>13</option>
-                <option>14</option>
+                <option>A</option>
+                <option>B</option>
+                <option>C</option>
+                <option>D</option>
+                <option>E</option>
+                <option>F</option>
+                <option>G</option>
+                <option>H</option>
+                <option>I</option>
+                <option>J</option>
+                <option>K</option>
+                <option>L</option>
+                <option>M</option>
+                <option>N</option>
             </select>
+
+			<button type="submit" class="btn btn-primary">Get Help</button></br></br>
+
+		
+			<label for="txtSiteLetter">Site Letter</label>
+			<input type="text" class="form-control" id="txtSiteLetter"/>
+			
+			<label for="txtAnswer">Answer</label>
+			<input type="text" class="form-control" id="txtAnswer" placeholder="Address"/>
+			
+			<label for="txtDescription">Description</label>
+			<input type="text" class="form-control" id="txtDescription" placeholder="Description"/>
+			
         </div>
-        <button type="submit" class="btn btn-primary">Get Help</button>
     </form>
     <!-- / PROFILE -->
    <hr />

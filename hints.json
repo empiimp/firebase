@@ -1,0 +1,7 @@
+{"A":{"Answer":"Address","Description":"The purple dot was really red.","SiteLetter":"A"},
+	"B":{
+		"SiteLetter": "B", 
+		"Answer":     "Address for C",
+		"Description": "No Red!"
+	}
+}
