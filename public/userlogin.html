@@ -1,0 +1,480 @@
+<html>
+<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Bryan Treasure Hunt</title>
+
+<script src="https://cdn.firebase.com/js/client/2.4.1/firebase.js"></script> <!--updated version from 1.1.1-->
+<link rel="stylesheet" type="text/css" href="style.css"></link>
+<script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-serialize-object/2.0.0/jquery.serialize-object.compiled.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/path.js/0.8.4/path.min.js"></script>
+<script>
+(function (jQuery, Firebase, Path) {
+    "use strict";
+    // the main firebase reference
+    var rootRef = new Firebase('https://boiling-heat-4725.firebaseio.com/web/uauth');
+    // pair our routes to our form elements and controller
+    var routeMap = {
+        '#/': {
+            form: 'frmLogin',
+            controller: 'login'
+        },
+            '#/logout': {
+            form: 'frmLogout',
+            controller: 'logout'
+        },
+            '#/register': {
+            form: 'frmRegister',
+            controller: 'register'
+        },
+            '#/profile': {
+            form: 'frmProfile',
+            controller: 'profile',
+            authRequired: true // must be logged in to get here
+        },
+            '#/hint': {
+            form: 'frmHint',
+            controller: 'hint',
+            authRequired: true // must be logged in to get here
+        },
+    };
+    // create the object to store our controllers
+    var controllers = {};
+    // store the active form shown on the page
+    var activeForm = null;
+    var alertBox = $('#alert');
+    function routeTo(route) {
+        window.location.href = '#/' + route;
+    }
+    // Handle third party login providers
+    // returns a promise
+    function thirdPartyLogin(provider) {
+        var deferred = $.Deferred();
+        rootRef.authWithOAuthPopup(provider, function (err, user) {
+            if (err) {
+                deferred.reject(err);
+            }
+            if (user) {
+                deferred.resolve(user);
+            }
+        });
+        return deferred.promise();
+    };
+    // Handle Email/Password login
+    // returns a promise
+    function authWithPassword(userObj) {
+        var deferred = $.Deferred();
+        console.log(userObj);
+        rootRef.authWithPassword(userObj, function onAuth(err, user) {
+            if (err) {
+                deferred.reject(err);
+            }
+            if (user) {
+                deferred.resolve(user);
+            }
+        });
+        return deferred.promise();
+    }
+    // create a user but not login
+    // returns a promsie
+    function createUser(userObj) {
+        var deferred = $.Deferred();
+        rootRef.createUser(userObj, function (err) {
+            if (!err) {
+                deferred.resolve();
+            } else {
+                deferred.reject(err);
+            }
+        });
+        return deferred.promise();
+    }
+    // Create a user and then login in
+    // returns a promise
+    function createUserAndLogin(userObj) {
+        return createUser(userObj)
+            .then(function () {
+            return authWithPassword(userObj);
+        });
+    }
+    // authenticate anonymously
+    // returns a promise
+    function authAnonymously() {
+        var deferred = $.Deferred();
+        rootRef.authAnonymously(function (err, authData) {
+            if (authData) {
+                deferred.resolve(authData);
+            }
+            if (err) {
+                deferred.reject(err);
+            }
+        });
+        return deferred.promise();
+    }
+    // route to the specified route if sucessful
+    // if there is an error, show the alert
+    function handleAuthResponse(promise, route) {
+        $.when(promise)
+            .then(function (authData) {
+            // route
+            routeTo(route);
+        }, function (err) {
+            console.log(err);
+            // pop up error
+            showAlert({
+                title: err.code,
+                detail: err.message,
+                className: 'alert-danger'
+            });
+        });
+    }
+    // options for showing the alert box
+    function showAlert(opts) {
+        var title = opts.title;
+        var detail = opts.detail;
+        var className = 'alert ' + opts.className;
+        alertBox.removeClass().addClass(className);
+        alertBox.children('#alert-title').text(title);
+        alertBox.children('#alert-detail').text(detail);
+    }
+    /// Controllers
+    ////////////////////////////////////////
+    controllers.login = function (form) {
+        // Form submission for logging in
+        form.on('submit', function (e) {
+            var userAndPass = $(this).serializeObject();
+            var loginPromise = authWithPassword(userAndPass);
+            e.preventDefault();
+            handleAuthResponse(loginPromise, 'hint');
+        });
+        // Social buttons
+        form.children('.bt-social').on('click', function (e) {
+            var $currentButton = $(this);
+            var provider = $currentButton.data('provider');
+            var socialLoginPromise;
+            e.preventDefault();
+            socialLoginPromise = thirdPartyLogin(provider);
+            handleAuthResponse(socialLoginPromise, 'profile');
+        });
+        form.children('#btAnon').on('click', function (e) {
+            e.preventDefault();
+            handleAuthResponse(authAnonymously(), 'profilex');
+        });
+    };
+    // logout immediately when the controller is invoked
+    controllers.logout = function (form) {
+        rootRef.unauth();
+    };
+    controllers.register = function (form) {
+        // Form submission for registering
+        form.on('submit', function (e) {
+            var userAndPass = $(this).serializeObject();
+            var loginPromise = createUserAndLogin(userAndPass);
+            e.preventDefault();
+            handleAuthResponse(loginPromise, 'profile');
+        });
+    };
+    controllers.profile = function (form) {
+        // Check the current user
+        var user = rootRef.getAuth();
+        var userRef;
+        // If no current user send to register page
+        if (!user) {
+            routeTo('register');
+            return;
+        }
+        // Load user info
+        userRef = rootRef.child('users').child(user.uid);
+        userRef.once('value', function (snap) {
+            var user = snap.val();
+            if (!user) {
+                return;
+            }
+            // set the fields
+            form.find('#txtName').val(user.name);
+            form.find('#ddlDino').val(user.favoriteDinosaur);
+        });
+        // Save user's info to Firebase
+        form.on('submit', function (e) {
+            e.preventDefault();
+            var userInfo = $(this).serializeObject();
+            userRef.set(userInfo, function onComplete() {
+                // show the message if write is successful
+                showAlert({
+                    title: 'Successfully saved!',
+                    detail: 'You are still logged in',
+                    className: 'alert-success'
+                });
+            });
+        });
+    };
+	
+	controllers.hint = function (form) {
+        // Check the current user
+        var user = rootRef.getAuth();
+        var hintRef, userUsedHintRef;
+        // If no current user send to register page
+        if (!user) {
+            routeTo('register');
+            return;
+        }
+        // Load hint info
+        // Save user's info to Firebase
+        form.on('submit', function (e) {
+            e.preventDefault();
+			var site = form.find('#ddlHint').val();
+			
+			
+			hintRef = rootRef.child('hints').child(site);
+			
+			userUsedHintRef = rootRef.child('usersUsedHint').child(site).child(user.uid);
+			
+			userUsedHintRef.set({date: new Date() + '', email: user.password.email}, function onComplete() {
+						
+				hintRef.once('value', function (snap) {
+					var hint = snap.val();
+					if (!hint) {
+						return;
+					}
+					// set the fields
+					form.find('#txtSiteLetter').val(hint.SiteLetter);
+					form.find('#txtAnswer').val(hint.Answer);
+					form.find('#txtDescription').val(hint.Description);
+					showAlert({
+						title: hint.title,
+						detail: hint.detail,
+						className: 'alert-success'
+					});				
+				});
+			});
+        });
+    };
+    /// Routing
+    ////////////////////////////////////////
+    // Handle transitions between routes
+    function transitionRoute(path) {
+        // grab the config object to get the form element and controller
+        var formRoute = routeMap[path];
+        var currentUser = rootRef.getAuth();
+        // if authentication is required and there is no
+        // current user then go to the register page and
+        // stop executing
+        if (formRoute.authRequired && !currentUser) {
+            routeTo('register');
+            return;
+        }
+        // wrap the upcoming form in jQuery
+        var upcomingForm = $('#' + formRoute.form);
+        // if there is no active form then make the current one active
+        if (!activeForm) {
+            activeForm = upcomingForm;
+        }
+        // hide old form and show new form
+        activeForm.hide();
+        upcomingForm.show().hide().fadeIn(750);
+        // remove any listeners on the soon to be switched form
+        activeForm.off();
+        // set the new form as the active form
+        activeForm = upcomingForm;
+        // invoke the controller
+        controllers[formRoute.controller](activeForm);
+    }
+    // Set up the transitioning of the route
+    function prepRoute() {
+        transitionRoute(this.path);
+    }
+    /// Routes
+    ///  #/         - Login
+    //   #/logout   - Logut
+    //   #/register - Register
+    //   #/profile  - Profile
+    Path.map("#/").to(prepRoute);
+    Path.map("#/logout").to(prepRoute);
+    Path.map("#/register").to(prepRoute);
+    Path.map("#/profile").to(prepRoute);
+	Path.map("#/hint").to(prepRoute);
+	
+    Path.root("#/");
+    /// Initialize
+    ////////////////////////////////////////
+    $(function () {
+        // Start the router
+        Path.listen();
+        // whenever authentication happens send a popup
+        rootRef.onAuth(function globalOnAuth(authData) {
+            if (authData) {
+                showAlert({
+                    title: 'Logged in!',
+                    detail: 'Using ' + authData.provider,
+                    className: 'alert-success'
+                });
+            } else {
+                showAlert({
+                    title: 'You are not logged in',
+                    detail: '',
+                    className: 'alert-info'
+                });
+            }
+        });
+    });
+}(window.jQuery, window.Firebase, window.Path))
+</script>
+<style>
+form {
+    display: none;
+}
+</style>
+</head>
+<body>
+<!-- saved from url=(0042)https://boiling-heat-4725.firebaseapp.com/ -->
+<header class="navbar navbar-static-top navbar-inverse" id="top" role="banner">
+    <div class="container">
+        <div class="navbar-header">
+            <button class="navbar-toggle collapsed" id="josephchanges" type="button" data-toggle="collapse" data-target=".bs-navbar-collapse"> <span class="sr-only">Toggle navigation</span>
+ <span class="icon-bar"></span>
+ <span class="icon-bar"></span>
+ <span class="icon-bar"></span>
+
+            </button> <a href="#" class="navbar-brand">Bryan Treasure Hunt</a>
+
+        </div>
+        <nav class="collapse navbar-collapse bs-navbar-collapse" role="navigation">
+            <ul class="nav navbar-nav" id="josephchangedthetopbanner">
+                <li> <a href="#/">Login</a>
+
+                </li>
+                <li> <a href="#/logout">Logout</a>
+
+                </li>
+                <li> <a href="#/register">Register</a>
+
+                </li>
+                <li> <a href="#/profile">Profile</a>
+
+                </li>
+                <li> <a href="#/hint">Hint</a>
+
+                </li>
+				
+            </ul>
+        </nav>
+    </div>
+</header>
+<div id="container" class="container">
+    <!-- LOGIN -->
+    <form id="frmLogin" role="form">
+         <h2>Login</h2>
+
+        <div class="form-group">
+            <label for="txtEmail">Email address</label>
+            <input type="email" class="form-control" id="txtEmail" placeholder="Enter email" name="email" />
+        </div>
+        <div class="form-group">
+            <label for="txtPass">Password</label>
+            <input type="password" class="form-control" id="txtPass" placeholder="Password" name="password" />
+        </div>
+        <button type="submit" class="btn btn-default btn-block" id="josephchanges">Login</button>
+        <br />
+        <br />
+         <!-- <h4>Login with</h4>
+		 <a href="#" class="btn btn-primary bt-social" data-provider="facebook">Facebook</a>
+		 <a href="#" class="btn btn-info bt-social" data-provider="twitter">Twitter</a>
+         <a href="#" class="btn btn-danger bt-social" data-provider="google">Google+</a>
+		 <a href="#" class="btn btn-default bt-social" data-provider="github">GitHub</a>
+		<a href="#" class="btn btn-warning" id="btAnon">Anon</a>
+-->
+    </form>
+    <!-- / LOGIN -->
+    <!-- LOGOUT -->
+    <form id="frmLogout" role="form">
+         <h2>You are logged out!</h2>
+
+    </form>
+    <!-- / LOGOUT -->
+    <!-- REGISTER -->
+    <form id="frmRegister" role="form">
+         <h2>Register</h2>
+
+        <div class="form-group">
+            <label for="txtRegEmail">Email address</label>
+            <input type="email" class="form-control" id="txtEmail" placeholder="Enter email" name="email" />
+        </div>
+        <div class="form-group">
+            <label for="txtRegPass">Password</label>
+            <input type="password" class="form-control" id="txtPass" placeholder="Password" name="password" />
+        </div>
+        <button type="submit" class="btn btn-default" id="josephchanges">Register</button>
+    </form>
+    <!-- / REGISTER -->
+    <!-- PROFILE -->
+    <form id="frmProfile" role="form">
+         <h2>Profile</h2>
+
+        <br />
+        <div class="form-group">
+            <label for="txtName">Name</label>
+            <input type="text" class="form-control" id="txtName" placeholder="Name" name="name" />
+        </div>
+        <div class="form-group">
+            <label for="ddlDino">Favorite Movie</label>
+            <select id="ddlDino" name="favoriteDinosaur" class="form-control">
+                <option>None</option>
+                <option>Star Wars</option>
+                <option>Smokey and the Bandit</option>
+                <option>The Bird Cage</option>
+                <option>One Flew Over the CooCoo's Nest</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary" id="josephchanges">Update</button>
+    </form>
+    <!-- / PROFILE -->
+    <!-- HINT -->
+    <form id="frmHint" role="form">
+         <h2>Hint</h2>
+
+        <br />
+        <div class="form-group">
+            <label for="ddlHint">Site letter (Letter on the white stake of the site where you are stuck</label>
+            <select id="ddlHint" name="hint" class="form-control">
+                <option>None</option>
+                <option>A</option>
+                <option>B</option>
+                <option>C</option>
+                <option>D</option>
+                <option>E</option>
+                <option>F</option>
+                <option>G</option>
+                <option>H</option>
+                <option>I</option>
+                <option>J</option>
+                <option>K</option>
+                <option>L</option>
+                <option>M</option>
+                <option>N</option>
+            </select>
+
+			<button type="submit" class="btn btn-primary" id="josephchanges">Get Help</button></br></br>
+
+		
+			<label for="txtSiteLetter">Site Letter</label>
+			<input type="text" class="form-control" id="txtSiteLetter"/>
+			
+			<label for="txtAnswer">Answer</label>
+			<input type="text" class="form-control" id="txtAnswer" placeholder="Address"/>
+			
+			<label for="txtDescription">Description</label>
+			<input type="text" class="form-control" id="txtDescription" placeholder="Description"/>
+			
+        </div>
+    </form>
+    <!-- / PROFILE -->
+   <hr />
+    <!-- ALERT BOX -->
+    <div id="alert" class="alert" role="alert">
+         <h4 id="alert-title">You are not logged in</h4>
+
+        <p id="alert-detail"></p>
+    </div>
+    <!-- / ALERT BOX -->
+</div>
+
+</body></html>
