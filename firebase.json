@@ -1,9 +1,0 @@
-{
-  "firebase": "boiling-heat-4725",
-  "public": "public",
-  "ignore": [
-    "firebase.json",
-    "**/.*",
-    "**/node_modules/**"
-  ]
-}
