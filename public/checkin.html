@@ -1,6 +1,6 @@
 <html>
 <head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<title>Bryan Treasure Hunt</title>
+<title>BTH Check In</title>
 
 <script src="https://cdn.firebase.com/js/client/1.1.1/firebase.js"></script>
 <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css"></link>
@@ -15,7 +15,7 @@
     "use strict";
 
     // the main firebase reference
-    var rootRef = new Firebase('https://boiling-heat-4725.firebaseio.com/cars/');
+    var rootRef = new Firebase('https://boiling-heat-4725.firebaseio.com/');
 
     // pair our routes to our form elements and controller
     var routeMap = {
@@ -27,9 +27,9 @@
             form: 'frmLogout',
             controller: 'logout'
         },
-            '#/hint': {
-            form: 'frmHint',
-            controller: 'hint',
+            '#/checkin': {
+            form: 'frmCheckin',
+            controller: 'checkin',
             authRequired: true // must be logged in to get here
         },
     };
@@ -39,6 +39,8 @@
 
     // store the active form shown on the page
     var activeForm = null;
+	
+	var cars = [];
 
     function routeTo(route) {
         window.location.href = '#/' + route;
@@ -108,7 +110,7 @@
             var loginPromise = authWithPassword(userAndPass);
             e.preventDefault();
 
-            handleAuthResponse(loginPromise, 'hint');
+            handleAuthResponse(loginPromise, 'checkin');
 
         });
     };
@@ -118,50 +120,77 @@
         rootRef.unauth();
     };
 
-	controllers.hint = function (form) {
+	function getCars() {
         // Check the current user
         var user = rootRef.getAuth();
-        var hintRef, userUsedHintRef;
+        var checkinRef, userUsedCheckinRef;
 
         // If no current user send to login page
         if (!user) {
             routeTo('login');
             return;
         }
+		
+		if ( cars.length > 0) {
+			return;
+		}
+		checkinRef = rootRef.child('cars');
+		cars = [];
+		
+		checkinRef.once('value', function (snap) {
+			snap.forEach(function(childSnap) {
+				var name = childSnap.name();
+				var childData = childSnap.val();
+				cars.push(name);
+				$('#ddlCar').append('<option value="' + name + '">' + name + '</option>');
+				return false; // keep looping for more data - true would stop loop
+			});
+		});
+	}
 
-        // Load hint info
+
+	controllers.checkin = function (form) {
+        // Check the current user
+        var user = rootRef.getAuth();
+        var checkinRef, userUsedCheckinRef;
+
+        // If no current user send to login page 
+        if (!user) {
+            routeTo('login');
+            return;
+        }
+		getCars();
+        // Load checkin info
 
         // Save user's info to Firebase
         form.on('submit', function (e) {
             e.preventDefault();
 
 
-			var site = form.find('#ddlHint').val();
+			var site = form.find('#ddlSite').val();
 			
+			var car = form.find('#ddlCar').val();
 			
-			hintRef = rootRef.child('hints').child(site);
-			
-			userUsedHintRef = rootRef.child('usersUsedHint').child(site).child(user.uid);
-			
-			userUsedHintRef.set({date: new Date() + '', email: user.password.email}, function onComplete() {
-						
-				hintRef.once('value', function (snap) {
-					var hint = snap.val();
-					if (!hint) {
-						return;
-					}
-
-					// set the fields
-					form.find('#txtSiteLetter').val(hint.SiteLetter);
-					form.find('#txtAnswer').val(hint.Answer);
-					form.find('#txtDescription').val(hint.Description);
-					showAlert({
-						title: hint.title,
-						detail: hint.detail,
-						className: 'alert-success'
-					});				
+			if (!site || !car) {
+				showAlert({
+					title: 'Missing value',
+					detail: 'Please select a ' + (site ? '' : ' site ' ) 
+						+ (!site && !car ? ' and ' : '')
+						+ (car ? '' : ' car ')
+						+ ' before hitting "Check In"',
+					className: 'alert-success'
 				});
-			});
+			} else {
+				checkinRef = rootRef.child('cars').child(car).child(site);
+				
+				checkinRef.set( new Date() + '', function onComplete() {
+					showAlert({
+						title: car,
+						detail: car + ' checked in',
+						className: 'alert-success'
+					});
+				});
+			}
         });
     };
 
@@ -213,11 +242,11 @@
     /// Routes
     ///  #/         - Login
     //   #/logout   - Logut
-    //   #/hint     - Hint
+    //   #/checkin     - Checkin
 
     Path.map("#/").to(prepRoute);
     Path.map("#/logout").to(prepRoute);
-	Path.map("#/hint").to(prepRoute);
+	Path.map("#/checkin").to(prepRoute);
 	
     Path.root("#/");
 
@@ -268,7 +297,7 @@ form {
  <span class="icon-bar"></span>
  <span class="icon-bar"></span>
 
-            </button> <a href="#" class="navbar-brand">Bryan Treasure Hunt</a>
+            </button> <a href="#" class="navbar-brand">BTH Check In</a>
 
         </div>
         <nav class="collapse navbar-collapse bs-navbar-collapse" role="navigation">
@@ -279,7 +308,7 @@ form {
                 <li> <a href="#/logout">Logout</a>
 
                 </li>
-                <li> <a href="#/hint">Hint</a>
+                <li> <a href="#/checkin">Check In</a>
 
                 </li>
 				
@@ -312,13 +341,13 @@ form {
     </form>
     <!-- / LOGOUT -->
     <!-- HINT -->
-    <form id="frmHint" role="form">
-         <h2>Hint</h2>
+    <form id="frmCheckin" role="form">
+         <h2>Check In</h2>
 
         <br />
         <div class="form-group">
-            <label for="ddlHint">Site letter (Letter on the white stake of the site where you are stuck</label>
-            <select id="ddlHint" name="hint" class="form-control">
+            <label for="ddlSite">Site letter</label>
+            <select id="ddlSite" name="site" class="form-control">
                 <option>None</option>
                 <option>A</option>
                 <option>B</option>
@@ -334,20 +363,13 @@ form {
                 <option>L</option>
                 <option>M</option>
                 <option>N</option>
-            </select>
+            </select></br>
+			<select id="ddlCar" name="car" class="form-control">
+			</select></br>
 
-			<button type="submit" class="btn btn-primary">Get Help</button></br></br>
+			<button type="submit" class="btn btn-primary">Check In</button></br></br>
 
 		
-			<label for="txtSiteLetter">Site Letter</label>
-			<input type="text" class="form-control" id="txtSiteLetter" disabled="disabled"/>
-			
-			<label for="txtAnswer">Answer</label>
-			<input type="text" class="form-control" id="txtAnswer" placeholder="Address" disabled="disabled"/>
-			
-			<label for="txtDescription">Description</label>
-			<input type="text" class="form-control" id="txtDescription" placeholder="Description" disabled="disabled"/>
-			
         </div>
     </form>
     <!-- / HINT -->
